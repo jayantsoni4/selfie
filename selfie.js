@@ -13,7 +13,7 @@ app.use(express.json({ limit: "10mb" }));
 // Replace <username>, <password>, and <dbname> with your Atlas values
 const MONGODB_URI =
   process.env.MONGODB_URI ||
-  "mongodb+srv://service:services1234@cluster0.wxa147v.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+  "mongodb+srv://jayantsoni4382:js%40workdb@cluster0.jjjc03f.mongodb.net/attendanceDB?retryWrites=true&w=majority";
 
 console.log("🔗 Connecting to:", MONGODB_URI);
 
