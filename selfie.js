@@ -30,7 +30,7 @@ mongoose
 // ===============================
 const selfieSchema = new mongoose.Schema({
   username: String,
-  image: String,
+  // image: String,
   name: String,
   address: String,
   number: String,
