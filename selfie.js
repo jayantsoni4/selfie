@@ -1,37 +1,46 @@
-// server.js
+// ===============================
+// 🚀 Fast & Optimized DSR Backend
+// ===============================
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const compression = require("compression");
+const NodeCache = require("node-cache");
 
 const app = express();
+
+// ===============================
+// 🔧 Middleware
+// ===============================
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+app.use(compression()); // gzip compression for faster network transfer
+
+// Simple in-memory cache (TTL = 5 minutes)
+const cache = new NodeCache({ stdTTL: 300 });
 
 // ===============================
-// MongoDB Atlas Connection
+// 🔗 MongoDB Connection
 // ===============================
-// Replace <username>, <password>, and <dbname> with your Atlas values
 const MONGODB_URI =
   process.env.MONGODB_URI ||
-  // "mongodb+srv://service:services1234@cluster0.wxa147v.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
   "mongodb+srv://jayantsoni4382:js%40workdb@cluster0.jjjc03f.mongodb.net/attendanceDB?retryWrites=true&w=majority";
-
-console.log("🔗 Connecting to:", MONGODB_URI);
 
 mongoose
   .connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
+    maxPoolSize: 10, // increase pool for concurrent requests
   })
-  .then(() => console.log("✅ MongoDB Connected"))
+  .then(() => console.log("✅ MongoDB Connected Successfully"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // ===============================
-// Schema
+// 📦 Schema & Model
 // ===============================
 const selfieSchema = new mongoose.Schema({
   username: String,
-  // image: String,
   name: String,
   address: String,
   number: String,
@@ -58,91 +67,93 @@ const selfieSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now },
 });
 
+// ✅ Add important indexes for speed
+selfieSchema.index({ username: 1 });
+selfieSchema.index({ date: 1 });
+selfieSchema.index({ timestamp: -1 });
+
 const Selfie = mongoose.model("Selfie", selfieSchema);
 
 // ===============================
-// Routes
+// 🧠 API Routes
 // ===============================
-// app.post("/api/selfie", async (req, res) => {
-//   try {
-//     const selfie = new Selfie(req.body);
 
-//     if (selfie.username || selfie.image || !selfie.name || !selfie.address) {
-//       return res.status(400).json({ error: "Missing required fields." });
-//     }
-
-//     await selfie.save();
-//     res.json(selfie);
-//   } catch (err) {
-//     console.error("POST error:", err);
-//     res.status(500).json({ error: "Failed to save submission." });
-//   }
-// });
-
+// ✅ Add new DSR Entry
 app.post("/api/selfie", async (req, res) => {
   try {
     const selfie = new Selfie(req.body);
+    const saved = await selfie.save();
 
-    // ✅ Remove 'selfie.image' from this condition
-    if (!selfie.username || !selfie.name || !selfie.address) {
-      return res.status(400).json({ error: "Missing required fields." });
-    }
+    // clear cache for freshness
+    cache.flushAll();
 
-    await selfie.save();
-    res.json(selfie);
+    res.status(201).json(saved);
   } catch (err) {
-    console.error("POST error:", err);
-    res.status(500).json({ error: "Failed to save submission." });
+    console.error("❌ Save error:", err);
+    res.status(500).json({ error: "Error saving data" });
   }
 });
 
-
+// ✅ Get All Selfies (Optionally filtered by month)
 app.get("/api/selfies", async (req, res) => {
   try {
-    const { username } = req.query;
-    const query = username ? { username } : {};
-    const data = await Selfie.find(query).sort({ timestamp: -1 });
+    const { username, month } = req.query;
+    const cacheKey = `selfies_${username || "all"}_${month || "all"}`;
+
+    // ⚡ Serve from cache if available
+    if (cache.has(cacheKey)) {
+      console.log("⚡ Cache Hit");
+      return res.json(cache.get(cacheKey));
+    }
+
+    console.log("🐢 Cache Miss - Fetching from DB");
+
+    const query = {};
+    if (username) query.username = username;
+
+    // 🔹 Filter by month (e.g. 2025-10)
+    if (month) {
+      const start = new Date(`${month}-01T00:00:00Z`);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 1);
+      query.timestamp = { $gte: start, $lt: end };
+    }
+
+    // ⚡ Fetch lean (plain JS objects) + projection (only needed fields)
+    const data = await Selfie.find(query)
+      .select(
+        "username name address From To Location MobileNo epnbd inv bat pan Inverter Battery Panel Mode km Amount remarks date location timestamp"
+      )
+      .sort({ timestamp: -1 })
+      .lean();
+
+    // 🧠 Cache result
+    cache.set(cacheKey, data);
+
     res.json(data);
   } catch (err) {
-    console.error("GET error:", err);
-    res.status(500).json({ error: "Failed to fetch data." });
+    console.error("❌ Fetch error:", err);
+    res.status(500).json({ error: "Error fetching data" });
   }
 });
 
-app.put("/api/selfie/:id", async (req, res) => {
-  try {
-    const updated = await Selfie.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-
-    if (!updated) {
-      return res.status(404).json({ error: "Selfie not found." });
-    }
-
-    res.json(updated);
-  } catch (err) {
-    console.error("PUT error:", err);
-    res.status(500).json({ error: "Failed to update selfie." });
-  }
-});
-
+// ✅ Delete Entry by ID
 app.delete("/api/selfie/:id", async (req, res) => {
   try {
-    const deleted = await Selfie.findByIdAndDelete(req.params.id);
-    if (!deleted) {
-      return res.status(404).json({ error: "Selfie not found." });
-    }
-    res.json({ message: "Selfie deleted." });
+    await Selfie.findByIdAndDelete(req.params.id);
+
+    // clear cache
+    cache.flushAll();
+
+    res.json({ message: "Deleted successfully" });
   } catch (err) {
-    console.error("DELETE error:", err);
-    res.status(500).json({ error: "Failed to delete selfie." });
+    console.error("❌ Delete error:", err);
+    res.status(500).json({ error: "Error deleting entry" });
   }
 });
 
 // ===============================
-// Start Server (Railway Port)
+// 🌍 Start Server
 // ===============================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () =>
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
-);
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
