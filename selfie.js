@@ -1,44 +1,37 @@
-// ===============================
-// 🚀 Fast & Optimized DSR Backend
-// ===============================
-
+// server.js
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const compression = require("compression");
 const NodeCache = require("node-cache");
+require("dotenv").config(); // load .env locally
 
 const app = express();
 
-// ===============================
-// 🔧 Middleware
-// ===============================
+// Middleware
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
-app.use(compression()); // gzip compression for faster network transfer
+app.use(compression());
 
-// Simple in-memory cache (TTL = 5 minutes)
+// Cache
 const cache = new NodeCache({ stdTTL: 300 });
 
-// ===============================
-// 🔗 MongoDB Connection
-// ===============================
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  "mongodb+srv://jayantsoni4382:js%40workdb@cluster0.jjjc03f.mongodb.net/attendanceDB?retryWrites=true&w=majority";
+// MongoDB
+const MONGODB_URI = process.env.MONGODB_URI; // set in Render dashboard
+if (!MONGODB_URI) {
+  console.error("❌ MONGODB_URI not defined in environment");
+  process.exit(1);
+}
 
 mongoose
-  .connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    maxPoolSize: 10, // increase pool for concurrent requests
-  })
-  .then(() => console.log("✅ MongoDB Connected Successfully"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+  .connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true, maxPoolSize: 10 })
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err);
+    process.exit(1);
+  });
 
-// ===============================
-// 📦 Schema & Model
-// ===============================
+// Schema
 const selfieSchema = new mongoose.Schema({
   username: String,
   name: String,
@@ -60,33 +53,23 @@ const selfieSchema = new mongoose.Schema({
   Amount: String,
   remarks: String,
   date: String,
-  location: {
-    latitude: Number,
-    longitude: Number,
-  },
+  location: { latitude: Number, longitude: Number },
   timestamp: { type: Date, default: Date.now },
 });
 
-// ✅ Add important indexes for speed
+// Indexes
 selfieSchema.index({ username: 1 });
 selfieSchema.index({ date: 1 });
 selfieSchema.index({ timestamp: -1 });
 
 const Selfie = mongoose.model("Selfie", selfieSchema);
 
-// ===============================
-// 🧠 API Routes
-// ===============================
-
-// ✅ Add new DSR Entry
+// Routes
 app.post("/api/selfie", async (req, res) => {
   try {
     const selfie = new Selfie(req.body);
     const saved = await selfie.save();
-
-    // clear cache for freshness
     cache.flushAll();
-
     res.status(201).json(saved);
   } catch (err) {
     console.error("❌ Save error:", err);
@@ -94,24 +77,15 @@ app.post("/api/selfie", async (req, res) => {
   }
 });
 
-// ✅ Get All Selfies (Optionally filtered by month)
 app.get("/api/selfies", async (req, res) => {
   try {
     const { username, month } = req.query;
     const cacheKey = `selfies_${username || "all"}_${month || "all"}`;
 
-    // ⚡ Serve from cache if available
-    if (cache.has(cacheKey)) {
-      console.log("⚡ Cache Hit");
-      return res.json(cache.get(cacheKey));
-    }
-
-    console.log("🐢 Cache Miss - Fetching from DB");
+    if (cache.has(cacheKey)) return res.json(cache.get(cacheKey));
 
     const query = {};
     if (username) query.username = username;
-
-    // 🔹 Filter by month (e.g. 2025-10)
     if (month) {
       const start = new Date(`${month}-01T00:00:00Z`);
       const end = new Date(start);
@@ -119,17 +93,11 @@ app.get("/api/selfies", async (req, res) => {
       query.timestamp = { $gte: start, $lt: end };
     }
 
-    // ⚡ Fetch lean (plain JS objects) + projection (only needed fields)
     const data = await Selfie.find(query)
-      .select(
-        "username name address From To Location MobileNo epnbd inv bat pan Inverter Battery Panel Mode km Amount remarks date location timestamp"
-      )
       .sort({ timestamp: -1 })
       .lean();
 
-    // 🧠 Cache result
     cache.set(cacheKey, data);
-
     res.json(data);
   } catch (err) {
     console.error("❌ Fetch error:", err);
@@ -137,14 +105,10 @@ app.get("/api/selfies", async (req, res) => {
   }
 });
 
-// ✅ Delete Entry by ID
 app.delete("/api/selfie/:id", async (req, res) => {
   try {
     await Selfie.findByIdAndDelete(req.params.id);
-
-    // clear cache
     cache.flushAll();
-
     res.json({ message: "Deleted successfully" });
   } catch (err) {
     console.error("❌ Delete error:", err);
@@ -152,8 +116,6 @@ app.delete("/api/selfie/:id", async (req, res) => {
   }
 });
 
-// ===============================
-// 🌍 Start Server
-// ===============================
+// Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
