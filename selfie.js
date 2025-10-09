@@ -1,5 +1,5 @@
 // ===============================
-// 🚀 Fast & Optimized DSR Backend (No Compression)
+// 🚀 DSR / Attendance Backend for Render
 // ===============================
 
 const express = require("express");
@@ -15,15 +15,18 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-// Simple in-memory cache (TTL = 5 minutes)
+// In-memory cache (5 min TTL)
 const cache = new NodeCache({ stdTTL: 300 });
 
 // ===============================
 // 🔗 MongoDB Connection
 // ===============================
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  "mongodb+srv://jayantsoni4382:js%40workdb@cluster0.jjjc03f.mongodb.net/attendanceDB?retryWrites=true&w=majority";
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.error("❌ MONGODB_URI is not defined! Please set it in Render Environment.");
+  process.exit(1);
+}
 
 mongoose
   .connect(MONGODB_URI, {
@@ -32,7 +35,10 @@ mongoose
     maxPoolSize: 10,
   })
   .then(() => console.log("✅ MongoDB Connected Successfully"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err);
+    process.exit(1);
+  });
 
 // ===============================
 // 📦 Schema & Model
@@ -65,22 +71,23 @@ const selfieSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now },
 });
 
-// ✅ Add important indexes for speed
+// Indexes for faster queries
 selfieSchema.index({ username: 1 });
 selfieSchema.index({ date: 1 });
 selfieSchema.index({ timestamp: -1 });
 
 const Selfie = mongoose.model("Selfie", selfieSchema);
 
-// ✅ Add new DSR Entry
+// ===============================
+// 📌 Routes
+// ===============================
+
+// Add new DSR Entry
 app.post("/api/selfie", async (req, res) => {
   try {
     const selfie = new Selfie(req.body);
     const saved = await selfie.save();
-
-    // clear cache for freshness
-    cache.flushAll();
-
+    cache.flushAll(); // clear cache
     res.status(201).json(saved);
   } catch (err) {
     console.error("❌ Save error:", err);
@@ -88,24 +95,22 @@ app.post("/api/selfie", async (req, res) => {
   }
 });
 
-// ✅ Get All Selfies (Optionally filtered by month)
+// Get all selfies (optionally filter by username & month)
 app.get("/api/selfies", async (req, res) => {
   try {
     const { username, month } = req.query;
     const cacheKey = `selfies_${username || "all"}_${month || "all"}`;
 
-    // ⚡ Serve from cache if available
     if (cache.has(cacheKey)) {
-      console.log("⚡ Cache Hit");
+      console.log("⚡ Cache hit");
       return res.json(cache.get(cacheKey));
     }
 
-    console.log("🐢 Cache Miss - Fetching from DB");
+    console.log("🐢 Cache miss - fetching from DB");
 
     const query = {};
     if (username) query.username = username;
 
-    // 🔹 Filter by month (e.g. 2025-10)
     if (month) {
       const start = new Date(`${month}-01T00:00:00Z`);
       const end = new Date(start);
@@ -113,14 +118,11 @@ app.get("/api/selfies", async (req, res) => {
       query.timestamp = { $gte: start, $lt: end };
     }
 
-    // ⚡ Fetch lean (plain JS objects)
     const data = await Selfie.find(query)
       .sort({ timestamp: -1 })
       .lean();
 
-    // 🧠 Cache result
     cache.set(cacheKey, data);
-
     res.json(data);
   } catch (err) {
     console.error("❌ Fetch error:", err);
@@ -128,14 +130,13 @@ app.get("/api/selfies", async (req, res) => {
   }
 });
 
-// ✅ Delete Entry by ID
+// Delete entry by ID
 app.delete("/api/selfie/:id", async (req, res) => {
   try {
-    await Selfie.findByIdAndDelete(req.params.id);
+    const deleted = await Selfie.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Entry not found" });
 
-    // clear cache
     cache.flushAll();
-
     res.json({ message: "Deleted successfully" });
   } catch (err) {
     console.error("❌ Delete error:", err);
