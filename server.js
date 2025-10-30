@@ -1,61 +1,151 @@
 // server.js
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-require('dotenv').config();
+require("dotenv").config();
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
-// Replace this with your MongoDB Atlas URI
-// const MONGO_URI = 'your_mongodb_atlas_uri_here';
-const MONGO_URI = process.env.MONGO_URI;
-
+// =======================
+// 🔧 Middleware
+// =======================
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 
-// MongoDB Schema
-const userSchema = new mongoose.Schema({
-  name: String,
-  designation: String,
-  location: String,
-  remarks: String,
-  sales: Number,
-  collection: Number,
-  salary: Object, // e.g., { "2025-07": 5000 }
-  attendance: { type: Map, of: String }, // e.g., { "2025-07-19": "present" }
+// =======================
+// ⚙️ MongoDB Connection
+// =======================
+const MONGO_URI =
+  process.env.MONGODB_URI ||
+//   "mongodb+srv://jayantsoni4382:js%4work@cluster0.mongodb.net/placementDB";
+  "mongodb+srv://khushsoni839:<db_password>@cluster0.zbjae.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+
+mongoose
+  .connect(MONGO_URI)
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+
+// =======================
+// 🧩 Mongoose Schemas
+// =======================
+const jobSchema = new mongoose.Schema(
+  {
+    role: { type: String, required: true },
+    salary: { type: String, required: true },
+    description: { type: String },
+    skills: { type: String },
+    experience: { type: String },
+    education: { type: String },
+
+    // 🆕 Added Fields
+    jobType: { type: String, enum: ["Full Time", "Part Time"], required: true },
+    location: { type: String, required: true },
+    timing: { type: String, required: true }, // e.g. "9 AM - 5 PM"
+    postDate: { type: Date,  },
+  },
+  { timestamps: true }
+);
+
+const applicantSchema = new mongoose.Schema(
+  {
+    jobId: { type: mongoose.Schema.Types.ObjectId, ref: "Job" },
+    name: { type: String, required: true },
+    phone: { type: String, required: true },
+    email: String,
+    address: String,
+    note: String,
+  },
+  { timestamps: true }
+);
+
+const Job = mongoose.model("Job", jobSchema);
+const Applicant = mongoose.model("Applicant", applicantSchema);
+
+// =======================
+// 📌 JOB ROUTES
+// =======================
+
+// Get all jobs
+app.get("/api/jobs", async (req, res) => {
+  try {
+    const jobs = await Job.find().sort({ createdAt: -1 });
+    res.json(jobs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-const User = mongoose.model('User', userSchema);
-
-// Routes
-
-// Get all users
-app.get('/api/users', async (req, res) => {
-  const users = await User.find();
-  res.json(users);
+// Create a new job
+app.post("/api/jobs", async (req, res) => {
+  try {
+    const { role, salary, description, skills, experience, education } = req.body;
+    if (!role || !salary) {
+      return res.status(400).json({ message: "Role and Salary are required" });
+    }
+    const job = new Job({ role, salary, description, skills, experience, education });
+    await job.save();
+    res.status(201).json(job);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// Add user
-app.post('/api/users', async (req, res) => {
-  const newUser = new User(req.body);
-  await newUser.save();
-  res.json(newUser);
+// Update job
+app.put("/api/jobs/:id", async (req, res) => {
+  try {
+    const updatedJob = await Job.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedJob) return res.status(404).json({ message: "Job not found" });
+    res.json(updatedJob);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// Update user
-app.put('/api/users/:id', async (req, res) => {
-  const updatedUser = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
-  res.json(updatedUser);
+// Delete job
+app.delete("/api/jobs/:id", async (req, res) => {
+  try {
+    const deleted = await Job.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Job not found" });
+    res.json({ message: "Job deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// Delete user
-app.delete('/api/users/:id', async (req, res) => {
-  await User.findByIdAndDelete(req.params.id);
-  res.json({ message: 'User deleted' });
+// =======================
+// 📩 APPLICANT ROUTES
+// =======================
+app.post("/api/applicants", async (req, res) => {
+  try {
+    const { jobId, name, phone, email, address, note } = req.body;
+    if (!name || !phone)
+      return res.status(400).json({ message: "Name and phone required" });
+    const applicant = new Applicant({ jobId, name, phone, email, address, note });
+    await applicant.save();
+    res.status(201).json(applicant);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// Connect to MongoDB and start server
-mongoose.connect(MONGO_URI)
-  .then(() => app.listen(PORT, () => console.log(`Server running on port ${PORT}`)))
-  .catch(err => console.error('MongoDB connection error:', err));
+app.get("/api/applicants", async (req, res) => {
+  try {
+    const applicants = await Applicant.find().sort({ createdAt: -1 });
+    res.json(applicants);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =======================
+// 🌐 Home route
+// =======================
+app.get("/", (req, res) => {
+  res.send("💼 Job Placement API is running...");
+});
+
+// =======================
+// 🚀 Server
+// =======================
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
