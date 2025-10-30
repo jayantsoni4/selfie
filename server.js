@@ -18,7 +18,8 @@ app.use(express.json({ limit: "5mb" }));
 const MONGO_URI =
   process.env.MONGODB_URI ||
 //   "mongodb+srv://jayantsoni4382:js%4work@cluster0.mongodb.net/placementDB";
-  "mongodb+srv://khushsoni839:<db_password>@cluster0.zbjae.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+  // "mongodb+srv://khushsoni839:<db_password>@cluster0.zbjae.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+  "mongodb+srv://khushsoni839:ks1234@cluster0.u3hib.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 mongoose
   .connect(MONGO_URI)
