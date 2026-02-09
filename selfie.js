@@ -53,6 +53,8 @@ const selfieSchema = new mongoose.Schema({
   km: String,
   Amount: String,
   remarks: String,
+  morningMeter: String,
+  eveningMeter: String,
   date: String,
   location: {
     latitude: Number,
@@ -116,7 +118,7 @@ app.get("/api/selfies", async (req, res) => {
     // ⚡ Fetch lean (plain JS objects) + projection (only needed fields)
     const data = await Selfie.find(query)
       .select(
-        "username name address From To Location MobileNo epnbd inv bat pan Inverter Battery Panel Mode km Amount remarks date location timestamp"
+        "username name address From To Location MobileNo epnbd inv bat pan Inverter Battery Panel Mode km Amount  remarks date location timestamp"
       )
       .sort({ timestamp: -1 })
       .lean();
